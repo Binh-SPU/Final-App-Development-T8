@@ -9,59 +9,53 @@ import {
 } from "react-native";
 import * as SQLite from "expo-sqlite";
 
+function openDatabase() {
+  const db = SQLite.openDatabase("Test.db");
+  db.transaction((tx) => {
+    tx.executeSql(
+      "CREATE TABLE IF NOT EXISTS List (ItemID INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL UNIQUE, ItemName TEXT NOT NULL, Quantity TEXT NOT NULL)"
+    );
+  });
+  return db;
+}
+
+const db = openDatabase();
+
 export default function App() {
   const [itemsList, setItemsList] = useState([]);
   const [currtItem, setCurrItem] = useState("");
   const [currItemQuantity, setcurrItemQuantity] = useState("");
 
-  function openDatabase() {
-    const db = SQLite.openDatabase("Grocery-Checklist.db");
-    return db;
-  }
-
-  const db = openDatabase();
-
   useEffect(() => {
     db.transaction((tx) => {
-      let sqlcmd = "";
-      sqlcmd += "create table if not exists List";
-      sqlcmd += "  (ItemID integer primary key autoincrement not null,";
-      sqlcmd += "   ItemName text not null,)";
-      sqlcmd += "   Quantity text not null)";
-      tx.executeSql(sqlcmd);
+      tx.executeSql(
+        "SELECT * FROM List",
+        null,
+        (_, dataSet) => setItemsList(dataSet.rows._array),
+        (_, errorMessage) => console.log(errorMessage)
+      );
     });
-
-    db.transaction((tx) => {
-      let sqlcmd = "SELECT * FROM List";
-      tx.executeSql(sqlcmd, [], (_, resultSet) => {
-        setItemsList(resultSet.rows._array); // results returned
-      });
-    });
-  }, []);
+  }, [db]);
 
   const addingCurrItem = () => {
     db.transaction((tx) => {
-      let sqlcmd = "";
-      sqlcmd += "INSERT INTO List (ItemName, Quantity) values (?, ?)";
-      tx.executeSql(sqlcmd, [currtItem, currItemQuantity], (_, resultSet) => {
-        let existingItemList = [...itemsList];
-        existingItemList.push({
-          ItemID: resultSet.insertId,
-          ItemName: currtItem,
-          Quantity: currItemQuantity,
-        });
-        setItemsList(...existingItemList, currtItem, currItemQuantity);
-      });
+      tx.executeSql(
+        "INSERT INTO List (ItemName, Quantity) VALUES (?, ?)",
+        [currtItem, currItemQuantity],
+        (_, dataSet) => {
+          let existingItemList = [...itemsList];
+          existingItemList.push({
+            ItemID: dataSet.insertId,
+            ItemName: currtItem,
+            Quantity: currItemQuantity,
+          });
+          setItemsList(existingItemList);
+          setCurrItem("");
+          setcurrItemQuantity("");
+        },
+        (_, errorMessage) => console.log(errorMessage)
+      );
     });
-
-    const newCurrItem = [
-      ...itemsList,
-      { holderItemName: currtItem, holderItemQuantity: currItemQuantity },
-    ];
-
-    setItemsList(newCurrItem);
-    setCurrItem("");
-    setcurrItemQuantity("");
   };
 
   const deletingCurrItem = (id) => {
@@ -69,22 +63,17 @@ export default function App() {
       tx.executeSql(
         "DELETE FROM List WHERE ItemID = ?",
         [id],
-        (_, resultSet) => {
-          if (resultSet.rowsAffected > 0) {
+        (_, dataSet) => {
+          if (dataSet.rowsAffected > 0) {
             let existingItemList = [...itemsList].filter(
-              (items) => items.ItemID != id
+              (item) => item.ItemID !== id
             );
             setItemsList(existingItemList);
-            setCurrItem(undefined);
-            setcurrItemQuantity(undefined);
           }
-        }
+        },
+        (_, errorMessage) => console.log(errorMessage)
       );
     });
-
-    const newCurrItem = [...itemsList];
-    newCurrItem.splice(id, 1);
-    setItemsList(newCurrItem);
   };
 
   return (
@@ -113,14 +102,12 @@ export default function App() {
         {itemsList.map((perItem, ItemID) => (
           <View style={styles.itemDisplay} key={ItemID}>
             <View style={styles.itemInfo}>
-              <Text style={styles.itemNameStyle}>{perItem.holderItemName}</Text>
-              <Text style={styles.itemQuantityStyle}>
-                x{perItem.holderItemQuantity}
-              </Text>
+              <Text style={styles.itemNameStyle}>{perItem.ItemName}</Text>
+              <Text style={styles.itemQuantityStyle}>x{perItem.Quantity}</Text>
             </View>
             <TouchableOpacity
               style={styles.delBtn}
-              onPress={() => deletingCurrItem(ItemID)}
+              onPress={() => deletingCurrItem(perItem.ItemID)}
             >
               <Text style={styles.delBtnText}>Delete</Text>
             </TouchableOpacity>
